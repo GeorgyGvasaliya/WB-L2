@@ -1,137 +1,106 @@
 package main
 
 import (
-	"L2/develop/3/config"
 	"bufio"
+	"flag"
 	"fmt"
-	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 )
 
-func getFile(filename string) ([]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
+func main() {
+	k := flag.Int("k", 1, "колонка для сортировки")
+	n := flag.Bool("n", false, "сортировать по числовому значению")
+	r := flag.Bool("r", false, "обратная сортировка")
+	u := flag.Bool("u", false, "не выводить повторяющиеся строки")
 
-	var text []string
-	scanner := bufio.NewScanner(file)
+	flag.Parse()
+
+	filename := flag.Arg(0)
+
+	//  read data and transform it to matrix
+	data := PrepareData(filename)
+
+	if *u {
+		data = DeleteDuplicates(data)
+	}
+
+	data = Sort(data, *k, *n, *r)
+
+	PrintData(data)
+}
+
+func PrepareData(filename string) [][]string {
+	strlist := make([]string, 0)
+	f, err := os.Open(filename)
+	if err != nil {
+		fmt.Println("error opening file: err:", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
-		text = append(text, scanner.Text())
+		strlist = append(strlist, scanner.Text())
 	}
 
-	err = scanner.Err()
-	if err != nil {
-		return nil, err
+	var matrix [][]string
+	for _, str := range strlist {
+		matrix = append(matrix, strings.Fields(str))
 	}
-	return text, nil
+
+	return matrix
 }
 
-func main() {
-	cfg := config.NewConfig()
-
-	text, err := getFile(cfg.Filename)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	fmt.Println("before:", text)
-	fmt.Println("after :", task(text, cfg))
-}
-
-//task return sorted slice string
-func task(arr []string, cfg config.Config) []string {
-	// конкретная строка для действа если в диапазоне строк в файле иначе все строки
-	if cfg.K >= 0 && cfg.K < len(arr) {
-		split := strings.Split(arr[cfg.K], " ")
-		v := ""
-		for _, s := range split {
-			v += flagCheck(s, cfg.N, cfg.R)
+func DeleteDuplicates(data [][]string) [][]string {
+	set := make(map[string]struct{})
+	for i := 0; i < len(data); i++ {
+		strItem := strings.ToLower(strings.Join(data[i], " "))
+		if _, ok := set[strItem]; !ok {
+			set[strItem] = struct{}{}
 		}
-		arr[cfg.K] = v
 	}
-
-	//res := make([]string, 0)
-	//for _, str := range arr {
-	//	split := strings.Split(str, " ")
-	//	for _, s := range split {
-	//		st := flagCheck(s, cfg.N, cfg.R)
-	//		if st == "" {
-	//			continue
-	//		}
-	//		res = append(res, st)
-	//	}
-	//}
-
-	if cfg.U {
-		return checkUnique(arr)
+	// distinct
+	dst := make([][]string, len(set))
+	i := 0
+	for key := range set {
+		dst[i] = strings.Split(key, " ")
+		i++
 	}
-
-	return arr
+	return dst
 }
 
-//flagCheck return string pass all of flags
-func flagCheck(str string, n, r bool) string {
-	if r {
-		str = RSort([]rune(str))
+func Sort(data [][]string, k int, n, r bool) [][]string {
+
+	if r && n {
+		sort.Slice(data, func(i, j int) bool { return StrToInt(data[i][k-1]) > StrToInt(data[j][k-1]) })
+	} else if r && !n {
+		sort.Slice(data, func(i, j int) bool { return data[i][k-1] > data[j][k-1] })
+	} else if !r && n {
+		sort.Slice(data, func(i, j int) bool { return StrToInt(data[i][k-1]) < StrToInt(data[j][k-1]) })
 	} else {
-		str = Sort([]rune(str))
+		sort.Slice(data, func(i, j int) bool { return data[i][k-1] < data[j][k-1] })
 	}
 
-	if n {
-		str = number(str)
-	}
-
-	return str
+	return data
 }
 
-//checkUnique - flag -u
-func checkUnique(res []string) []string {
-	uq := make([]string, 0)
-	for i, str := range res {
-		ok := false
-		for j := i + 1; j < len(res); j++ {
-			if str == res[j] {
-				ok = true
-				break
-			}
+func StrToInt(s string) int {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		panic(err)
+	}
+	return i
+}
+
+func PrintData(data [][]string) {
+	for _, s1 := range data {
+		for _, s2 := range s1 {
+			fmt.Print(s2, " ")
 		}
-		if ok {
-			continue
-		}
-		uq = append(uq, str)
+		fmt.Println()
 	}
-	return uq
-}
-
-// number - flag -n
-func number(str string) string {
-	res := ""
-	for _, c := range str {
-		if c < '0' || c > '9' {
-			break
-		}
-		res += string(c)
-	}
-	return res
-}
-
-//RSort - flag -r
-func RSort(s []rune) string {
-	sort.Slice(s, func(i, j int) bool {
-		return s[i] > s[j]
-	})
-	return string(s)
-}
-
-//Sort - without flag -r
-func Sort(s []rune) string {
-	sort.Slice(s, func(i, j int) bool {
-		return s[i] < s[j]
-	})
-	return string(s)
 }
