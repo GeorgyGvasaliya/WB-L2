@@ -1,79 +1,56 @@
 package main
 
 import (
-	"bufio"
-	"errors"
+	"context"
 	"flag"
-	"io"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
+	"time"
 )
 
-const (
-	bufSize = 1024 * 8
-)
-
-// rewrite lib: https://github.com/hahnicity/go-wget
-func main() {
-	flag.Parse()
-	if len(flag.Args()) < 1 {
-		log.Fatal("no url")
-	}
-	path := flag.Arg(0)
-	err := Wget(path, "file.html")
+func HTTPGet(url string, timeout time.Duration) (content []byte, err error) {
+	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Fatal(err.Error())
+		return
 	}
-}
+	//формируем запрос
+	ctx, cancel_func := context.WithTimeout(context.Background(), timeout)
+	request = request.WithContext(ctx)
 
-func Wget(url, fileName string) error {
-	resp, err := getResponse(url)
-	if err != nil {
-		return err
-	}
-
-	if fileName == "" {
-		return errors.New("write filename")
-	}
-
-	err = writeToFile(fileName, resp)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Make the GET request to a url, return the response
-func getResponse(url string) (*http.Response, error) {
-	tr := new(http.Transport)
-	client := &http.Client{Transport: tr}
-	resp, err := client.Get(url)
+	//выполнение запроса
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return nil, err
 	}
-	return resp, nil
+	//закрываем соединение
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		cancel_func()
+		return nil, fmt.Errorf("INVALID RESPONSE; status: %s", response.Status)
+	}
+
+	return ioutil.ReadAll(response.Body)
 }
 
-// Write the response of the GET request to file
-func writeToFile(fileName string, resp *http.Response) error {
-	// Credit for this implementation should go to github user billnapier
-	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY, 0777)
-	defer file.Close()
-	if err != nil {
-		return err
-	}
+func main() {
+	//флаги со значениями по умолчинию
+	url := flag.String("url", "https://habr.com/", "url")
+	timeout := flag.Duration("timeout", 5*time.Second, "string1")
+	output_path := flag.String("output", "file.txt", "string2")
+	flag.Parse()
 
-	bufferedWriter := bufio.NewWriterSize(file, bufSize)
+	//получаем данные
+	content, err := HTTPGet(*url, *timeout*time.Second)
 	if err != nil {
-		return err
+		log.Fatalln("HTTPGET: ", err)
 	}
-
-	_, err = io.Copy(bufferedWriter, resp.Body)
+	//запись в файл, с разрешениями
+	err = ioutil.WriteFile(*output_path, content, 0644)
 	if err != nil {
-		return err
+		log.Fatalln("WriteFile: ", err)
 	}
-
-	return nil
+	return
 }
