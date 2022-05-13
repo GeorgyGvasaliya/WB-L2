@@ -1,126 +1,167 @@
 package main
 
 import (
-	"L2/develop/5/config"
 	"bufio"
+	"flag"
 	"fmt"
 	"log"
 	"os"
-	"regexp"
+	"strings"
 )
 
-func getFile(filename string) ([]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	var rows []string
-	for scanner.Scan() {
-		rows = append(rows, scanner.Text())
-	}
-
-	err = scanner.Err()
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
 func main() {
-	cfg := config.NewConfig()
-	text, err := getFile(cfg.Filename)
+	flaga := flag.Int("A", 0, "after")
+	flagb := flag.Int("B", 0, "before")
+	flagC := flag.Int("C", 0, "context")
+	flagc := flag.Bool("c", false, "count")
+	flagi := flag.Bool("i", false, "ignoreCase")
+	flagv := flag.Bool("v", false, "invert")
+	flagf := flag.Bool("F", false, "fixed")
+	flagn := flag.Bool("n", false, "lineNum")
+
+	flag.Parse()
+
+	var strlist []string
+	pos := -1
+	filename := flag.Arg(0)
+	lookFor := flag.Arg(1)
+
+	f, err := os.Open(filename)
 	if err != nil {
-		log.Fatalln(err.Error())
+		fmt.Println("error opening file: err:", err)
+		os.Exit(1)
 	}
-	fmt.Println(task(text, cfg))
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	//считывам построчно, добавляем в массив
+	for scanner.Scan() {
+		//если флаг i приводим  все к нижнему регистру
+		if *flagi {
+			strlist = append(strlist, strings.ToLower(scanner.Text()))
+			lookFor = strings.ToLower(lookFor)
+		} else {
+			strlist = append(strlist, scanner.Text())
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	//реализация флага f точное совпадение со строкой
+	if *flagf {
+		pos = FindFullStr(strlist, lookFor)
+	} else {
+		pos = FindStr(strlist, lookFor) //сначала поиск строки с совпадением
+	}
+
+	//реализация флага n печать номера строки
+	if *flagn {
+		if pos == -1 {
+			fmt.Println("No such string")
+		} else {
+			fmt.Println("Number of string: ", pos)
+		}
+	}
+
+	//реализация флага c печать количества совпадений
+	if *flagc {
+		count := FindCount(strlist, lookFor)
+		fmt.Println("Count match: ", count)
+	}
+
+	//реализация флага v удаление совпадений
+	if *flagv {
+		strlist = RemoveMatch(strlist, lookFor)
+		fmt.Println(strlist)
+		return
+	}
+
+	//реализация флага a
+	if *flaga != 0 {
+		strlist = FindStringAfter(strlist, pos, *flaga)
+	}
+
+	//реализация флага b
+	if *flagb != 0 {
+		strlist = FindStringBefore(strlist, pos, *flagb)
+	}
+
+	//реализация флага C
+	if *flagC != 0 {
+		strlist = FindStringAround(strlist, pos, *flagC)
+
+	}
+
+	// печать резалта
+	fmt.Println(strlist)
 }
 
-func task(text []string, cfg config.Config) []string {
-	var res []string
-	pref := ""
-	post := ""
-	//ignore case
-	if cfg.I {
-		pref = "(?i)"
-	}
-	//current string not a pattern
-	if cfg.F {
-		pref += "^"
-		post = "$"
-	}
-	reg, err := regexp.Compile(pref + cfg.RegString + post)
-	if err != nil {
-		log.Fatalln("error compile regular")
-	}
-	// after flag
-	if cfg.A != 0 {
-		for i, s := range text {
-			if reg.MatchString(s) {
-				if cfg.A <= len(text)-i {
-					res = append(res, fmt.Sprintf("A: %s", text[i:i+cfg.A+1]))
-					break
-				}
-				res = append(res, fmt.Sprintf("A: %s", text[i:]))
-				break
-			}
+func FindFullStr(strlist []string, lookFor string) int {
+	for i, curstr := range strlist {
+		if curstr == lookFor {
+			//вернуть индекс строки
+			return i
 		}
 	}
-	// before flag
-	if cfg.B != 0 {
-		for i, s := range text {
-			if reg.MatchString(s) {
-				if cfg.B-1 < i {
-					res = append(res, fmt.Sprintf("B: %s", text[i-cfg.B:i+1]))
-					break
-				}
-				res = append(res, fmt.Sprintf("B: %s", text[:i+1]))
-				break
-			}
-		}
-	}
-	// after + before flag
-	if cfg.C != 0 {
-		for i, s := range text {
-			if reg.MatchString(s) {
-				start := 0
-				end := len(text)
-				if cfg.C-1 < i {
-					start = i - cfg.C
-				}
-				if cfg.C <= end-i {
-					end = i + cfg.C + 1
-				}
+	return -1
+}
 
-				res = append(res, fmt.Sprintf("C: %s", text[start:end]))
-				break
-			}
+func FindStr(strlist []string, lookFor string) int {
+	for i, curstr := range strlist {
+		if strings.Contains(curstr, lookFor) == true {
+			return i
 		}
 	}
-	// count match flag
-	if cfg.Count {
-		cnt := 0
-		for _, s := range text {
-			cnt += len(reg.FindAllString(s, -1))
-		}
-		if cfg.V {
-			res = append(res, fmt.Sprintf("Count -c -v (invert):%d", len(text)-cnt))
-		} else {
-			res = append(res, fmt.Sprintf("Count -c:%d", cnt))
+	return -1
+}
+
+func FindCount(strlist []string, lookFor string) int {
+	count := 0
+	for _, curstr := range strlist {
+		if strings.Contains(curstr, lookFor) == true {
+			count++
 		}
 	}
-	// num of matches (+invert num) flag
-	if cfg.N {
-		var n []int
-		for i, s := range text {
-			if reg.MatchString(s) {
-				n = append(n, i+1)
-			}
+	return count
+}
+
+func RemoveMatch(strlist []string, lookFor string) []string {
+	newtext := strings.Join(strlist, " ")
+	strlist = strings.Split(newtext, " ")
+	newlist := []string{}
+
+	for _, x := range strlist {
+		if x != lookFor {
+			newlist = append(newlist, x)
 		}
-		res = append(res, fmt.Sprintf("Match nunbers -n:%d", n))
-		cfg.N = false
 	}
-	return res
+	return newlist
+}
+
+func FindStringAfter(strlist []string, pos int, N int) []string {
+	changedList := []string{}
+	//проверка на количество строк для флага a
+	// подразумевается что введенное N валидно))
+	for i := pos; i <= pos+N; i++ {
+		changedList = append(changedList, strlist[i])
+	}
+	return changedList
+}
+
+func FindStringBefore(strlist []string, pos int, N int) []string {
+	changedList := []string{}
+	//проверка на количество строк для флага b
+	for i := pos - N; i <= pos; i++ {
+		changedList = append(changedList, strlist[i])
+	}
+	return changedList
+}
+
+func FindStringAround(strlist []string, pos int, N int) []string {
+	changedList := []string{}
+	for i := pos - N; i <= pos+N; i++ {
+		changedList = append(changedList, strlist[i])
+	}
+	return changedList
 }

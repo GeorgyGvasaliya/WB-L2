@@ -13,12 +13,13 @@ func main() {
 	f := flag.String("f", "1", "fields")
 	d := flag.String("d", "\t", "delimiter")
 	s := flag.Bool("s", false, "separated")
-	filename := flag.String("fn", "file.txt", "filename")
 
 	flag.Parse()
 
+	filename := flag.Arg(0)
+
 	//  read data and transform it to matrix
-	data := PrepareData(*filename, *d)
+	data := PrepareData(filename, *d)
 
 	// columns
 	clms := StrFflagToIntList(*f)
@@ -68,16 +69,7 @@ func StrFflagToIntList(str string) []int {
 	return clm
 }
 
-func crmMatrix(data []string, sep string) [][]string {
-	var matrix [][]string
-	for _, str := range data {
-		matrix = append(matrix, strings.Split(str, sep))
-	}
-	return matrix
-}
-
 func HandeS(matr [][]string) [][]string {
-
 	newmatr := [][]string{}
 	for _, str := range matr {
 		//there is sep if more than 1 elem

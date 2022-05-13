@@ -1,0 +1,5 @@
+The default set of command-line flags is controlled by
+top-level functions. The FlagSet type allows one to
+define independent sets of flags, such as to implement
+subcommands in a command-line interface. The methods of FlagSet
+are analogous to the top-level functions for the command-line flag set.
